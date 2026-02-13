@@ -34,7 +34,7 @@ class ApiService {
 
   static Future<bool> login(String username, String password) async {
     final response = await http.post(
-      Uri.parse('$API_BASE/api/token/'),
+      Uri.parse('$API_BASE/api/auth/login/'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'username': username, 'password': password}),
     );
@@ -59,7 +59,7 @@ class ApiService {
   static Future<List<dynamic>> getCourses() async {
     final token = await _getToken();
     final response = await http.get(
-      Uri.parse('$API_BASE/api/courses/'),
+      Uri.parse('$API_BASE/api/student/enrolled_courses/'),
       headers: {'Authorization': 'Bearer $token'},
     );
     if (response.statusCode == 200) {
@@ -71,7 +71,7 @@ class ApiService {
   static Future<bool> markAttendance(int courseId, double lat, double lng) async {
     final token = await _getToken();
     final response = await http.post(
-      Uri.parse('$API_BASE/api/attendance/mark/'),
+      Uri.parse('$API_BASE/api/submit-location/'),
       headers: {
         'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
