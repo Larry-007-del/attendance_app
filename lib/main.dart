@@ -1,8 +1,51 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:path_provider/path_provider.dart';
+
+// ============== LOGGER ==============
+class AppLogger {
+  static final AppLogger _instance = AppLogger._internal();
+  factory AppLogger() => _instance;
+  AppLogger._internal();
+
+  final List<String> _logBuffer = [];
+  static const int _maxBufferSize = 100;
+
+  void log(String level, String message) {
+    final timestamp = DateTime.now().toIso8601String();
+    final logLine = '[$timestamp] [$level] $message';
+    _logBuffer.add(logLine);
+    if (_logBuffer.length > _maxBufferSize) {
+      _logBuffer.removeAt(0);
+    }
+    print(logLine);
+  }
+
+  void d(String message) => log('DEBUG', message);
+  void i(String message) => log('INFO', message);
+  void w(String message) => log('WARN', message);
+  void e(String message) => log('ERROR', message);
+
+  List<String> getLogs() => List.unmodifiable(_logBuffer);
+
+  Future<void> saveLogsToFile() async {
+    try {
+      final directory = await getTemporaryDirectory();
+      final file = File('${directory.path}/attendance_logs.txt');
+      await file.writeAsString(_logBuffer.join('\n'));
+      i('Logs saved to ${file.path}');
+    } catch (e) {
+      log('ERROR', 'Failed to save logs: $e');
+    }
+  }
+}
+
+final AppLogger logger = AppLogger();
+// ============== LOGGER ==============
 
 void main() {
   runApp(const AttendanceApp());
@@ -33,6 +76,7 @@ class ApiService {
   static String? _token;
 
   static Future<bool> login(String username, String password) async {
+    logger.i('Login attempt for user: $username');
     final response = await http.post(
       Uri.parse('$API_BASE/api/auth/login/'),
       headers: {'Content-Type': 'application/json'},
@@ -42,10 +86,13 @@ class ApiService {
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       _token = data['access'];
+      logger.i('Login successful for user: $username');
       
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('token', _token!);
       return true;
+    } else {
+      logger.e('Login failed for user: $username - Status: ${response.statusCode}');
     }
     return false;
   }
@@ -70,6 +117,8 @@ class ApiService {
 
   static Future<bool> markAttendance(int courseId, double lat, double lng) async {
     final token = await _getToken();
+    logger.i('Marking attendance for course $courseId at ($lat, $lng)');
+    
     final response = await http.post(
       Uri.parse('$API_BASE/api/submit-location/'),
       headers: {
@@ -82,7 +131,14 @@ class ApiService {
         'longitude': lng,
       }),
     );
-    return response.statusCode == 200;
+
+    final success = response.statusCode == 200;
+    if (success) {
+      logger.i('Attendance marked successfully for course $courseId');
+    } else {
+      logger.e('Failed to mark attendance - Status: ${response.statusCode}, Body: ${response.body}');
+    }
+    return success;
   }
 
   static Future<void> logout() async {
